@@ -1,5 +1,5 @@
-import * as base58check from 'base58check'
-import { createHash } from 'crypto'
+const base58check = require('base58check') // JACKIE TODO CHAAAAAAAAAAAAAAAAAAAAAAAAAAANGE
+const crypto = require('crypto')
 
 /**
  * Takes a UHRP URL and removes any prefixes.
@@ -30,7 +30,7 @@ export const getURLForHash = (hash: Buffer) => {
  * @returns {string} - Base58Check encoded URL.
  */
 export const getURLForFile = (file: Buffer) => {
-  const hashFunc = createHash('sha256')
+  const hashFunc = crypto.createHash('sha256')
   hashFunc.update(file)
   const hash = hashFunc.digest('hex')
   return getURLForHash(Buffer.from(hash, 'hex'))
