@@ -6,3 +6,5 @@ export {
     getHashFromURL,
     isValidURL
 } from './StorageUtils.js'
+
+export { StorageUploader } from './StorageUploader.js'

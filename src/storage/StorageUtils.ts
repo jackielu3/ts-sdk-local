@@ -1,5 +1,5 @@
-const base58check = require('base58check') // JACKIE TODO CHAAAAAAAAAAAAAAAAAAAAAAAAAAANGE
-const crypto = require('crypto')
+import { Hash } from "../../src/primitives/index.js"
+import { fromBase58Check, toBase58Check } from "../../src/primitives/utils.js"
 
 /**
  * Takes a UHRP URL and removes any prefixes.
@@ -14,36 +14,34 @@ export const normalizeURL = (URL: string) => {
 
 /**
  * Generates a UHRP URL from a given SHA-256 hash.
- * @param {Buffer} hash - 32-byte SHA-256 hash.
+ * @param {number[]} hash - 32-byte SHA-256 hash.
  * @returns {string} - Base58Check encoded URL.
  */
-export const getURLForHash = (hash: Buffer) => {
-  if (hash.byteLength !== 32) {
+export const getURLForHash = (hash: number[]) => {
+  if (hash.length !== 32) {
     throw new Error('Hash length must be 32 bytes (sha256)')
   }
-  return base58check.encode(hash, Buffer.from('ce00', 'hex'))
+  return toBase58Check(hash)
 }
 
 /**
  * Generates a UHRP URL for a given file.
- * @param {Buffer | string} file - File content as Buffer or string.
+ * @param {number[] | string} file - File content as number array or string.
  * @returns {string} - Base58Check encoded URL.
  */
-export const getURLForFile = (file: Buffer) => {
-  const hashFunc = crypto.createHash('sha256')
-  hashFunc.update(file)
-  const hash = hashFunc.digest('hex')
-  return getURLForHash(Buffer.from(hash, 'hex'))
+export const getURLForFile = (file: number[]) => {
+  const hash = Hash.sha256(file)
+  return getURLForHash(hash)
 }
 
 /**
  * Extracts the hash from a UHRP URL.
  * @param {string} URL - UHRP URL.
- * @returns {Buffer} - Extracted SHA-256 hash.
+ * @returns {number[]} - Extracted SHA-256 hash.
  */
 export const getHashFromURL = (URL: string) => {
   URL = normalizeURL(URL)
-  const { prefix, data } = base58check.decode(URL)
+  const { prefix, data } = fromBase58Check(URL)
   if (data.byteLength !== 33) {
     throw new Error('Invalid length!')
   }

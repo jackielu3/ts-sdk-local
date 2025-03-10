@@ -1,15 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals'
 import { StorageUploader } from '../StorageUploader.js'
 import { WalletClient, StorageUtils } from '../../../mod.js'
 
-describe('StorageUploader Integration Tests', () => {
+// A helper for converting a string to a number[] of UTF-8 bytes
+function stringToUtf8Array(str: string): number[] {
+  return Array.from(new TextEncoder().encode(str))
+}
+
+describe('StorageUploader Tests', () => {
   let uploader: StorageUploader
   let walletClient: WalletClient
-  let globalFetchSpy: any
+  let globalFetchSpy: jest.SpiedFunction<typeof global.fetch>
 
   beforeEach(() => {
-    // Use real WalletClient
-    const client = new WalletClient('json-api', 'non-admin.com')
+    // Use a real or mock WalletClient
+    walletClient = new WalletClient('json-api', 'non-admin.com')
 
     uploader = new StorageUploader({
       nanostoreURL: 'https://nanostore.babbage.systems',
@@ -17,7 +21,8 @@ describe('StorageUploader Integration Tests', () => {
     })
 
     // Spy on global.fetch to simulate network requests
-    globalFetchSpy = jest.spyOn(global, 'fetch')
+    globalFetchSpy = jest
+      .spyOn(global, 'fetch')
       .mockResolvedValue(new Response(null, { status: 200 }))
   })
 
@@ -25,144 +30,59 @@ describe('StorageUploader Integration Tests', () => {
     jest.restoreAllMocks()
   })
 
-  it('should upload a real file, produce a valid UHRP URL, and decode to the known SHA-256', async () => {
-    const mockBuffer = Buffer.from('hello world')
+  it('should upload a file, produce a valid UHRP URL, and decode it to the known SHA-256', async () => {
+    // Suppose we want "Hello, world!" as data
+    // SHA-256("Hello, world!") starts with "b94d27b9..."
+    const data = stringToUtf8Array('Hello, world!')
 
-    const result = await uploader.upload({
+    // Mock out getUploadInfo so we can control the returned upload/public URLs
+    jest.spyOn(uploader as any, 'getUploadInfo').mockResolvedValue({
       uploadURL: 'https://example-upload.com/put',
-      publicURL: 'https://example.com/public/hello',
-      file: {
-        dataAsBuffer: mockBuffer,
-        size: mockBuffer.length,
-        type: 'text/plain'
-      }
-    })
-
-    expect(globalFetchSpy).toHaveBeenCalledTimes(1)
-    expect(StorageUtils.isValidURL(result.hash)).toBe(true)
-
-    console.log('publicURL:', result.publicURL)
-    console.log('hash:', result.hash)
-
-    const rawHash = StorageUtils.getHashFromURL(result.hash).toString('hex')
-    expect(rawHash.startsWith('b94d27b9')).toBe(true)
-    expect(result).toEqual({
-      published: true,
-      hash: result.hash,
       publicURL: 'https://example.com/public/hello'
     })
-  })
-
-  it('should throw if the upload fails', async () => {
-    globalFetchSpy.mockResolvedValueOnce(new Response(null, { status: 500 }))
-
-    await expect(
-      uploader.upload({
-        uploadURL: 'https://example-upload.com/put',
-        publicURL: 'https://example.com/public/fail',
-        file: {
-          dataAsBuffer: Buffer.from('failing data'),
-          size: 12
-        }
-      })
-    ).rejects.toThrow('File upload failed with HTTP 500')
-  })
-
-  it('should successfully generate an invoice', async () => {
-    globalFetchSpy.mockResolvedValueOnce(new Response(
-      JSON.stringify({
-        ORDER_ID: '12345',
-        identityKey: 'test-key',
-        amount: 100,
-        publicURL: 'https://example.com/file',
-        status: 'success'
-      }), 
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    ))
-
-    const result = await uploader.invoice(500, 30)
-    expect(result).toEqual({
-      ORDER_ID: '12345',
-      identityKey: 'test-key',
-      amount: 100,
-      publicURL: 'https://example.com/file',
-      status: 'success'
-    })
-  })
-
-  // ============================
-  // Test: Payment Processing
-  // ============================
-  it('should successfully make a payment', async () => {
-    globalFetchSpy.mockResolvedValueOnce(new Response(
-      JSON.stringify({
-        ORDER_ID: '12345',
-        amount: 100,
-        identityKey: 'test-key',
-        publicURL: 'https://example.com/file',
-        status: 'success'
-      }), 
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    ))
-
-    const result = await uploader.pay({
-      orderID: '12345',
-      recipientPublicKey: 'recipient-key',
-      amount: 100
-    })
-    expect(result).toEqual({
-      ORDER_ID: '12345',
-      amount: 100,
-      identityKey: 'test-key',
-      publicURL: 'https://example.com/file',
-      status: 'success'
-    })
-  })
-
-  // ============================
-  // Test: Full Publish Flow
-  // ============================
-  it('should publish a file and return the public URL and hash', async () => {
-    const mockBuffer = Buffer.from('hello world')
-
-    // Mock invoice
-    globalFetchSpy.mockResolvedValueOnce(new Response(
-      JSON.stringify({
-        ORDER_ID: '12345',
-        identityKey: 'test-key',
-        amount: 100,
-        publicURL: 'https://example.com/file',
-        status: 'success'
-      }), 
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    ))
-
-    // Mock payment
-    globalFetchSpy.mockResolvedValueOnce(new Response(
-      JSON.stringify({
-        status: 'success'
-      }), 
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    ))
-
-    // Mock file upload
-    globalFetchSpy.mockResolvedValueOnce(new Response(null, { status: 200 }))
 
     const result = await uploader.publishFile({
       file: {
-        dataAsBuffer: mockBuffer,
-        size: mockBuffer.length,
+        data,
         type: 'text/plain'
       },
-      retentionPeriod: 500000
+      retentionPeriod: 7 // days or whatever your system uses
     })
 
-    expect(globalFetchSpy).toHaveBeenCalledTimes(3)
+    // We expect exactly one PUT request
+    expect(globalFetchSpy).toHaveBeenCalledTimes(1)
+    // Check the result
     expect(StorageUtils.isValidURL(result.hash)).toBe(true)
-    expect(result).toEqual({
-      published: true,
-      hash: result.hash,
-      publicURL: 'https://example.com/file'
+    expect(result.publicURL).toBe('https://example.com/public/hello')
+    expect(result.published).toBe(true)
+
+    // For additional assurance, we can parse the hash and compare
+    // the first 4 hex bytes to "b94d27b9"
+    const rawHash = StorageUtils.getHashFromURL(result.hash)
+    const firstFour = rawHash.slice(0, 4).map(b => b.toString(16).padStart(2, '0')).join('')
+    expect(firstFour).toEqual('b94d27b9')
+  })
+
+  it('should throw if the upload fails with HTTP 500', async () => {
+    // Force the fetch to fail
+    globalFetchSpy.mockResolvedValueOnce(new Response(null, { status: 500 }))
+
+    // Also mock getUploadInfo
+    jest.spyOn(uploader as any, 'getUploadInfo').mockResolvedValue({
+      uploadURL: 'https://example-upload.com/put',
+      publicURL: 'https://example.com/public/fail'
     })
+
+    const failingData = stringToUtf8Array('failing data')
+
+    await expect(
+      uploader.publishFile({
+        file: {
+          data: failingData,
+          type: 'text/plain'
+        },
+        retentionPeriod: 30
+      })
+    ).rejects.toThrow('File upload failed: HTTP 500')
   })
 })
