@@ -7,7 +7,7 @@ export interface UploaderConfig {
 
 export interface UploadableFile {
     data: number[]
-    type?: string
+    type?: string //Todo add default
 }
 
 export interface UploadFileResult {
